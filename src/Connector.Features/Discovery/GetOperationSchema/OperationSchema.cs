@@ -42,6 +42,8 @@ public static class OperationSchema
                 if (parameter["style"] is not null || parameter["explode"] is not null)
                     throw new DiscoveryException("UnsupportedParameterSerialization");
                 var schema = Resolve(contract, parameter["schema"], new HashSet<string>(), 0) as JsonObject ?? throw new DiscoveryException("ParameterSchemaMissing");
+                if (schema["type"]?.GetValue<string>() is not ("string" or "number" or "integer" or "boolean"))
+                    throw new DiscoveryException("NonScalarParameterUnsupported");
                 fields[key] = schema;
                 if (parameter["required"]?.GetValue<bool>() == true) required.Add(key);
             }

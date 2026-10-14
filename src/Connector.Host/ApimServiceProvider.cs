@@ -13,7 +13,7 @@ using Newtonsoft.Json.Linq;
 namespace Connector.Host;
 
 [ServiceOperationsProvider(Id = ServiceId, Name = ServiceName)]
-public sealed class ApimServiceProvider : IServiceOperationsProvider
+public sealed class ApimServiceProvider(Func<HttpClient>? clientFactory = null, Func<string, string?>? settingReader = null) : IServiceOperationsProvider
 {
     public const string ServiceName = "apimconnector";
     public const string ServiceId = "/serviceProviders/apimconnector";
@@ -71,8 +71,8 @@ public sealed class ApimServiceProvider : IServiceOperationsProvider
         try
         {
             var profile = JObject.Parse(connectionParameters["connectionString"].Value<string>()!);
-            using var handler = new HttpClientHandler { AllowAutoRedirect = false };
-            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
+            using var http = clientFactory?.Invoke() ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(60) };
+            string? Setting(string name) => settingReader is null ? Environment.GetEnvironmentVariable(name) : settingReader(name);
             string Parameter(string name) => request.Parameters.TryGetValue(name, out var value) ? value.Value<string>() ?? "" : "";
             var apiName = string.IsNullOrEmpty(Parameter("apiVersion")) ? Parameter("apiName") : Parameter("apiVersion");
             var ct = request.CancellationToken;
@@ -82,10 +82,10 @@ public sealed class ApimServiceProvider : IServiceOperationsProvider
                 var snapshot = payload["_binding"]?.GetValue<string>() ?? throw new DiscoveryException("BindingSnapshotMissing");
                 var binding = System.Text.Json.JsonSerializer.Deserialize<OperationBinding>(snapshot) ?? throw new DiscoveryException("BindingSnapshotInvalid");
                 payload.Remove("_binding");
-                if (binding.ApiName != apiName || binding.OperationId != Parameter("operationId")) throw new DiscoveryException("BindingSelectionChanged");
+                if (binding.ApiName != apiName || binding.OperationId != Parameter("operationId") || binding.ApiSelector != Parameter("apiName")) throw new DiscoveryException("BindingSelectionChanged");
                 var token = await request.GetAuthenticationToken(profile.Value<string>("audience") ?? throw new DiscoveryException("AudienceMissing"));
                 var keySetting = profile.Value<string>("subscriptionKeySetting");
-                var key = keySetting is null ? null : Environment.GetEnvironmentVariable(keySetting);
+                var key = keySetting is null ? null : Setting(keySetting);
                 var result = await new ApiExecutor(http).InvokeAsync(binding, payload,
                     new Uri(profile.Value<string>("gatewayBaseUrl") ?? throw new DiscoveryException("GatewayMissing")), token.AccessToken, key, ct);
                 return new ServiceOperationResponse(result.Body is null ? JValue.CreateNull() : JToken.Parse(result.Body.ToJsonString()), result.Status);
@@ -94,7 +94,7 @@ public sealed class ApimServiceProvider : IServiceOperationsProvider
             var setting = profile.Value<string>("developerTokenSetting") ?? throw new DiscoveryException("DeveloperTokenSettingMissing");
             var discovery = new ApimDiscoveryClient(http, Guid.Parse(profile.Value<string>("subscriptionId")!),
                 profile.Value<string>("resourceGroup")!, profile.Value<string>("serviceName")!,
-                _ => Task.FromResult(Environment.GetEnvironmentVariable(setting) ?? ""));
+                _ => Task.FromResult(Setting(setting) ?? ""));
             JToken body;
             switch (operationId)
             {
@@ -123,7 +123,7 @@ public sealed class ApimServiceProvider : IServiceOperationsProvider
                         var routing = api.VersionSetId is null ? null : await discovery.GetVersionRoutingAsync(api.VersionSetId, ct);
                         OperationSchema.RemoveVersionParameter(schema.Inputs, routing);
                         var binding = new OperationBinding(api.Name, api.Version, selected.Name, selected.Method, api.Path, selected.UrlTemplate,
-                            routing, schema.Inputs.DeepClone().AsObject(), schema.Outputs.DeepClone().AsObject());
+                            routing, schema.Inputs.DeepClone().AsObject(), schema.Outputs.DeepClone().AsObject(), Parameter("apiName"));
                         schema.Inputs["properties"]!.AsObject()["_binding"] = new JsonObject
                         {
                             ["type"] = "string", ["x-ms-visibility"] = "internal", ["default"] = System.Text.Json.JsonSerializer.Serialize(binding)

@@ -9,7 +9,7 @@ using Connector.Features.Discovery;
 namespace Connector.Features.Execution.InvokeOperation;
 
 public sealed record OperationBinding(string ApiName, string? Version, string OperationId, string Method,
-    string ApiPath, string OperationPath, VersionRouting? Routing, JsonObject Inputs, JsonObject Outputs);
+    string ApiPath, string OperationPath, VersionRouting? Routing, JsonObject Inputs, JsonObject Outputs, string ApiSelector);
 public sealed record ApiResult(HttpStatusCode Status, JsonNode? Body);
 
 public sealed class ApiExecutor(HttpClient http)
@@ -34,6 +34,23 @@ public sealed class ApiExecutor(HttpClient http)
         if ((prefix + "/" + path).Split('/').Any(segment => segment is "." or "..") || path.Contains('\\')) throw new DiscoveryException("UnsafeOperationPath");
         var query = new Dictionary<string, string>(StringComparer.Ordinal);
         if (payload["queryParameters"] is JsonObject queryValues) foreach (var value in queryValues) query.Add(value.Key, Scalar(value.Value));
+        if (binding.OperationPath.Split('?', 2) is { Length: 2 } template)
+        {
+            foreach (var pair in template[1].Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var parts = pair.Split('=', 2);
+                var key = Uri.UnescapeDataString(parts[0]);
+                if (key.Contains('{') || key.Contains('}')) throw new DiscoveryException("QueryTemplateKeyUnsupported");
+                var literal = Uri.UnescapeDataString(parts.Length > 1 ? parts[1] : "");
+                var bound = Regex.Replace(literal, "\\{([^{}]+)\\}", match =>
+                {
+                    if (!query.TryGetValue(match.Groups[1].Value, out var parameter)) throw new DiscoveryException("QueryTemplateParameterMissing");
+                    return parameter;
+                });
+                if (!literal.Contains('{') && query.TryGetValue(key, out var supplied) && supplied != bound) throw new DiscoveryException("QueryTemplateOverride");
+                query[key] = bound;
+            }
+        }
         if (binding.Routing?.Scheme == "Query") AddVersion(query, binding.Routing.QueryName, binding.Version);
         var url = gateway.GetLeftPart(UriPartial.Authority) + prefix.TrimEnd('/') + "/" + path.TrimStart('/');
         if (query.Count > 0) url += "?" + string.Join("&", query.Select(pair => Uri.EscapeDataString(pair.Key) + "=" + Uri.EscapeDataString(pair.Value)));

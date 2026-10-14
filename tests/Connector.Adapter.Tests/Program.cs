@@ -8,6 +8,8 @@ using Newtonsoft.Json.Serialization;
 using Connector.Features.Execution.InvokeOperation;
 using System.Net;
 using System.Text;
+using Microsoft.Azure.Workflows.ServiceProviders.Abstractions;
+using Microsoft.WindowsAzure.ResourceStack.Common.Collections;
 
 var v1 = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "v1.openapi.json")))!.AsObject();
 var v2 = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "v2.openapi.json")))!.AsObject();
@@ -39,7 +41,7 @@ Require(manifest["inputs"]?["properties"]?["apiName"]?["x-ms-dynamic-list"]?["dy
 Require(manifest["inputs"]?["properties"]?["apiVersion"]?["x-ms-dynamic-list"]?["parameters"]?["apiName"]?["parameterReference"]?.Value<string>() == "apiName", "Version dependency missing");
 Require(manifest["outputs"]?["properties"]?["body"]?["x-ms-dynamic-properties"]?["dynamicState"]?["extension"]?["operationId"]?.Value<string>() == "outputSchema", "Dynamic output handler missing");
 Require(provider.GetOperations(true).Count() == 6, "Internal dynamic handlers not registered");
-var binding = new OperationBinding("orders-v1", "v1", "GetOrder", "GET", "poc-orders", "/orders/{orderId}", new VersionRouting("Segment", null, null), one.Inputs, one.Outputs);
+var binding = new OperationBinding("orders-v1", "v1", "GetOrder", "GET", "poc-orders", "/orders/{orderId}", new VersionRouting("Segment", null, null), one.Inputs, one.Outputs, "orders-v1");
 using (var handler = new GatewayHandler(async request =>
 {
     Require(request.RequestUri!.Host == "gateway.example.nl", "Runtime called management or an unexpected host");
@@ -68,7 +70,34 @@ using (var http = new HttpClient(new GatewayHandler(_ => throw new Exception("Va
 {
     await FailsAsync("RequiredValueMissing", () => new ApiExecutor(http).InvokeAsync(postBinding, new JsonObject { ["body"] = new JsonObject() }, new Uri("https://gateway.example.nl/"), "business-token", null));
 }
-Console.WriteLine("PASS: schemas, pinned SDK metadata and GET/POST runtime without ARM requests");
+var queryBinding = binding with { OperationPath = "/orders/{orderId}?state=active" };
+using (var http = new HttpClient(new GatewayHandler(request =>
+{
+    Require(request.RequestUri!.Query == "?state=active", "Fixed query template lost");
+    return Task.CompletedTask;
+}, HttpStatusCode.OK, "{}")))
+    await new ApiExecutor(http).InvokeAsync(queryBinding, new JsonObject { ["pathParameters"] = new JsonObject { ["orderId"] = "test" } }, new Uri("https://gateway.example.nl"), "business-token", null);
+var badParameter = v1.DeepClone().AsObject();
+badParameter["paths"]!["/orders/{orderId}"]!["get"]!["parameters"]![0]!["schema"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } };
+Fails("NonScalarParameterUnsupported", () => OperationSchema.Read(badParameter, "GET", "/orders/{orderId}"));
+var parameters = new InsensitiveDictionary<JToken>
+{
+    { "apiName", new JValue("orders-v1") }, { "apiVersion", new JValue("orders-v1") }, { "operationId", new JValue("GetOrder") },
+    { "payload", new JObject { ["pathParameters"] = new JObject { ["orderId"] = "test" }, ["_binding"] = System.Text.Json.JsonSerializer.Serialize(binding) } }
+};
+var sdkRequest = new TestRequest(parameters);
+var sdkProvider = new ApimServiceProvider(() => new HttpClient(new GatewayHandler(request =>
+{
+    Require(request.Headers.Authorization?.Parameter == "business-token", "Provider lost SDK auth token");
+    return Task.CompletedTask;
+}, HttpStatusCode.OK, "{\"id\":\"test\",\"customerName\":\"Example\"}")), _ => throw new Exception("Runtime must not read a discovery token"));
+var connection = new InsensitiveDictionary<JToken> { { "connectionString", new JValue("{\"gatewayBaseUrl\":\"https://gateway.example.nl\",\"audience\":\"api://test\"}") } };
+using (var result = await sdkProvider.InvokeOperation("invokeApi", connection, sdkRequest))
+    Require(result.HttpStatus == HttpStatusCode.OK && result.Body["id"]?.Value<string>() == "test" && sdkRequest.TokenRequests == 1, "Provider runtime wiring wrong");
+parameters["apiName"] = new JValue("customers-v1");
+using (var result = await sdkProvider.InvokeOperation("invokeApi", connection, new TestRequest(parameters)))
+    Require(result.HttpStatus == HttpStatusCode.BadRequest && result.Body["error"]?.Value<string>() == "BindingSelectionChanged", "Stale family selection accepted");
+Console.WriteLine("PASS: schemas, SDK dispatch, selector invalidation and GET/POST runtime without ARM requests");
 
 static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
 static void Fails(string expected, Action action)
@@ -88,5 +117,17 @@ sealed class GatewayHandler(Func<HttpRequestMessage, Task> inspect, HttpStatusCo
     {
         await inspect(request);
         return new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+    }
+}
+
+sealed class TestRequest : ServiceOperationRequest
+{
+    public int TokenRequests { get; private set; }
+    public TestRequest(InsensitiveDictionary<JToken> parameters) { Parameters = parameters; }
+    public override Task<ServiceProviderAuthenticationToken> GetAuthenticationToken(string audience)
+    {
+        if (audience != "api://test") throw new Exception("Wrong audience");
+        TokenRequests++;
+        return Task.FromResult(new ServiceProviderAuthenticationToken { AccessToken = "business-token", ExpiresOn = DateTime.UtcNow.AddMinutes(5) });
     }
 }

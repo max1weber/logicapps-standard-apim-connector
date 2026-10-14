@@ -4,6 +4,6 @@
     <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="4.6.0" />
     <ProjectReference Include="../../src/Connector.Host/Connector.Host.csproj" />
     <None Update="host.json;connections.json;GetOrder/workflow.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <None Update="local.settings.example.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+    <None Update="local.settings.json;local.settings.example.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
   </ItemGroup>
 </Project>
