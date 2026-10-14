@@ -22,7 +22,7 @@ await Check("An unversioned API remains selectable without another family's vers
 {
     using var handler = new SequenceHandler((request => { }, "{\"value\":[{\"id\":\"plain\",\"name\":\"health\",\"properties\":{}},{\"id\":\"orders\",\"name\":\"orders-v1\",\"properties\":{\"apiVersionSetId\":\"set1\",\"apiVersion\":\"v1\"}}]}"));
     using var http = new HttpClient(handler);
-    var versions = await Client(http).ListVersionsAsync("health");
+    var versions = await Client(http).ListVersionsAsync("api:health");
     Require(versions.Count == 1 && versions[0].Name == "health" && versions[0].Version is null, "Unversioned API lost");
 });
 
@@ -71,7 +71,7 @@ await Check("Version selection includes only the selected family", async () =>
 {
     using var handler = new SequenceHandler((request => { }, "{\"value\":[{\"id\":\"one\",\"name\":\"orders-v1\",\"properties\":{\"apiVersionSetId\":\"orders\",\"apiVersion\":\"v1\"}},{\"id\":\"two\",\"name\":\"orders-v2\",\"properties\":{\"apiVersionSetId\":\"orders\",\"apiVersion\":\"v2\"}},{\"id\":\"three\",\"name\":\"customers-v1\",\"properties\":{\"apiVersionSetId\":\"customers\",\"apiVersion\":\"v1\"}}]}"));
     using var http = new HttpClient(handler);
-    var versions = await Client(http).ListVersionsAsync("orders-v1");
+    var versions = await Client(http).ListVersionsAsync("versionset:orders");
     Require(versions.Select(api => api.Version).SequenceEqual(new[] { "v1", "v2" }), "Family selection incorrect");
 });
 

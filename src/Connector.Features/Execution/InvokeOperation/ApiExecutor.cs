@@ -32,10 +32,14 @@ public sealed class ApiExecutor(HttpClient http)
         var prefix = gateway.AbsolutePath.TrimEnd('/') + "/" + binding.ApiPath.Trim('/');
         if (binding.Routing?.Scheme == "Segment") prefix += "/" + Uri.EscapeDataString(binding.Version ?? throw new DiscoveryException("VersionMissing"));
         if ((prefix + "/" + path).Split('/').Any(segment => segment is "." or "..") || path.Contains('\\')) throw new DiscoveryException("UnsafeOperationPath");
-        var query = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (payload["queryParameters"] is JsonObject queryValues) foreach (var value in queryValues) query.Add(value.Key, Scalar(value.Value));
+        var suppliedQuery = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (payload["queryParameters"] is JsonObject queryValues) foreach (var value in queryValues) suppliedQuery.Add(value.Key, Scalar(value.Value));
+        if (binding.Routing?.Scheme == "Query") AddVersion(suppliedQuery, binding.Routing.QueryName, binding.Version);
+        var query = new Dictionary<string, string>(suppliedQuery, StringComparer.Ordinal);
         if (binding.OperationPath.Split('?', 2) is { Length: 2 } template)
         {
+            var mapped = new Dictionary<string, string>(StringComparer.Ordinal);
+            var consumed = new HashSet<string>(StringComparer.Ordinal);
             foreach (var pair in template[1].Split('&', StringSplitOptions.RemoveEmptyEntries))
             {
                 var parts = pair.Split('=', 2);
@@ -44,14 +48,19 @@ public sealed class ApiExecutor(HttpClient http)
                 var literal = Uri.UnescapeDataString(parts.Length > 1 ? parts[1] : "");
                 var bound = Regex.Replace(literal, "\\{([^{}]+)\\}", match =>
                 {
-                    if (!query.TryGetValue(match.Groups[1].Value, out var parameter)) throw new DiscoveryException("QueryTemplateParameterMissing");
+                    var parameterName = match.Groups[1].Value;
+                    if (!suppliedQuery.TryGetValue(parameterName, out var parameter)) throw new DiscoveryException("QueryTemplateParameterMissing");
+                    consumed.Add(parameterName);
                     return parameter;
                 });
-                if (!literal.Contains('{') && query.TryGetValue(key, out var supplied) && supplied != bound) throw new DiscoveryException("QueryTemplateOverride");
-                query[key] = bound;
+                if (suppliedQuery.TryGetValue(key, out var supplied) && supplied != bound) throw new DiscoveryException("QueryTemplateOverride");
+                if (!mapped.TryAdd(key, bound)) throw new DiscoveryException("DuplicateQueryTemplateKey");
             }
+            foreach (var parameter in consumed) query.Remove(parameter);
+            foreach (var pair in mapped) query[pair.Key] = pair.Value;
+            if (binding.Routing?.Scheme == "Query" && query.GetValueOrDefault(binding.Routing.QueryName!) != binding.Version)
+                throw new DiscoveryException("VersionOverride");
         }
-        if (binding.Routing?.Scheme == "Query") AddVersion(query, binding.Routing.QueryName, binding.Version);
         var url = gateway.GetLeftPart(UriPartial.Authority) + prefix.TrimEnd('/') + "/" + path.TrimStart('/');
         if (query.Count > 0) url += "?" + string.Join("&", query.Select(pair => Uri.EscapeDataString(pair.Key) + "=" + Uri.EscapeDataString(pair.Value)));
         using var request = new HttpRequestMessage(new HttpMethod(binding.Method), new Uri(url));

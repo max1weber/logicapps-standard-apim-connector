@@ -77,6 +77,32 @@ using (var http = new HttpClient(new GatewayHandler(request =>
     return Task.CompletedTask;
 }, HttpStatusCode.OK, "{}")))
     await new ApiExecutor(http).InvokeAsync(queryBinding, new JsonObject { ["pathParameters"] = new JsonObject { ["orderId"] = "test" } }, new Uri("https://gateway.example.nl"), "business-token", null);
+foreach (var template in new[] { "/orders/{orderId}", "/orders/{orderId}?api-version={api-version}", "/orders/{orderId}?api-version=v1" })
+{
+    var versionQuery = binding with { OperationPath = template, Routing = new VersionRouting("Query", null, "api-version") };
+    using var http = new HttpClient(new GatewayHandler(request =>
+    {
+        Require(request.RequestUri!.Query == "?api-version=v1", "Query version template wrong");
+        return Task.CompletedTask;
+    }, HttpStatusCode.OK, "{}"));
+    await new ApiExecutor(http).InvokeAsync(versionQuery, new JsonObject { ["pathParameters"] = new JsonObject { ["orderId"] = "test" } }, new Uri("https://gateway.example.nl"), "business-token", null);
+}
+var aliasedInputs = one.Inputs.DeepClone().AsObject();
+aliasedInputs["properties"]!["queryParameters"] = new JsonObject { ["type"] = "object", ["properties"] = new JsonObject { ["filter"] = new JsonObject { ["type"] = "string" } } };
+var aliasBinding = binding with { OperationPath = "/orders/{orderId}?state={filter}", Inputs = aliasedInputs };
+using (var http = new HttpClient(new GatewayHandler(request =>
+{
+    Require(request.RequestUri!.Query == "?state=active", "Mapped placeholder leaked source key");
+    return Task.CompletedTask;
+}, HttpStatusCode.OK, "{}")))
+    await new ApiExecutor(http).InvokeAsync(aliasBinding, new JsonObject { ["pathParameters"] = new JsonObject { ["orderId"] = "test" }, ["queryParameters"] = new JsonObject { ["filter"] = "active" } }, new Uri("https://gateway.example.nl"), "business-token", null);
+using (var http = new HttpClient(new GatewayHandler(_ => throw new Exception("Invalid template must not send HTTP"), HttpStatusCode.OK, "{}")))
+{
+    var executor = new ApiExecutor(http);
+    var payload = new JsonObject { ["pathParameters"] = new JsonObject { ["orderId"] = "test" } };
+    await FailsAsync("QueryTemplateOverride", () => executor.InvokeAsync(binding with { OperationPath = "/orders/{orderId}?api-version=v2", Routing = new VersionRouting("Query", null, "api-version") }, payload, new Uri("https://gateway.example.nl"), "business-token", null));
+    await FailsAsync("DuplicateQueryTemplateKey", () => executor.InvokeAsync(binding with { OperationPath = "/orders/{orderId}?state=active&state=inactive" }, payload, new Uri("https://gateway.example.nl"), "business-token", null));
+}
 var badParameter = v1.DeepClone().AsObject();
 badParameter["paths"]!["/orders/{orderId}"]!["get"]!["parameters"]![0]!["schema"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } };
 Fails("NonScalarParameterUnsupported", () => OperationSchema.Read(badParameter, "GET", "/orders/{orderId}"));
@@ -98,7 +124,6 @@ parameters["apiName"] = new JValue("customers-v1");
 using (var result = await sdkProvider.InvokeOperation("invokeApi", connection, new TestRequest(parameters)))
     Require(result.HttpStatus == HttpStatusCode.BadRequest && result.Body["error"]?.Value<string>() == "BindingSelectionChanged", "Stale family selection accepted");
 Console.WriteLine("PASS: schemas, SDK dispatch, selector invalidation and GET/POST runtime without ARM requests");
-foreach (var setting in typeof(OperationManifestSettings).GetProperties()) Console.WriteLine("SDK_SETTING " + setting.Name + " " + setting.PropertyType);
 
 static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
 static void Fails(string expected, Action action)
