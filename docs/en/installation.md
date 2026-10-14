@@ -2,7 +2,7 @@
 
 [Nederlands](../nl/installation.md)
 
-Revision: 2026-10-14. Design-stage guide; no released connector package exists.
+Revision: 2026-10-14. A buildable experimental preview is available; Azure/Portal installation is not yet validated. See [Standard adapter preview](standard-adapter.md) for build, settings, test deployment, verification and rollback.
 
 ## Prepare the repository
 

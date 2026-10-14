@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><GeneratePackageOnBuild>true</GeneratePackageOnBuild><PackageId>LogicApps.Standard.Apim.Connector</PackageId><Version>0.1.0-preview.1</Version><Description>Experimental APIM service-provider connector; Portal validation pending.</Description><TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeFeatureAssembly</TargetsForTfmSpecificBuildOutput></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.Workflows.WebJobs.Extension" Version="1.170.91" />
+    <ProjectReference Include="../Connector.Features/Connector.Features.csproj" PrivateAssets="all" />
+  </ItemGroup>
+  <Target Name="IncludeFeatureAssembly" DependsOnTargets="ResolveReferences">
+    <ItemGroup><BuildOutputInPackage Include="@(ReferenceCopyLocalPaths->WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))" /></ItemGroup>
+  </Target>
+</Project>

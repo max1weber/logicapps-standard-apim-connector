@@ -1,7 +1,7 @@
 name: Discovery build and contract scenarios
 on:
   push:
-    branches: [main, implement/apim-discovery]
+    branches: [main, develop, 'feature/**']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -14,5 +14,28 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - if: github.event_name == 'workflow_dispatch'
+        run: dotnet run --project tools/Connector.SdkProbe/Connector.SdkProbe.csproj --configuration Release
       - run: dotnet build src/Connector.Discovery.Cli/Connector.Discovery.Cli.csproj --configuration Release
       - run: dotnet run --project tests/Connector.Discovery.Tests/Connector.Discovery.Tests.csproj --configuration Release
+      - run: dotnet run --project tests/Connector.Adapter.Tests/Connector.Adapter.Tests.csproj --configuration Release
+      - run: dotnet publish examples/standard-host/StandardHost.csproj --configuration Release --output out/standard-host
+      - name: Verify custom startup metadata and packaged core
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, zipfile
+          path=pathlib.Path('out/standard-host/bin/extensions.json')
+          data=json.loads(path.read_text())
+          assert any('Connector.Host.Startup' in item['typeName'] for item in data['extensions'])
+          package=next(pathlib.Path('src/Connector.Host/bin/Release').glob('*.nupkg'))
+          with zipfile.ZipFile(package) as z:
+              assert 'lib/net8.0/Connector.Features.dll' in z.namelist()
+              assert 'lib/net8.0/Connector.Host.dll' in z.namelist()
+          print('Startup manifest and NuGet core verified')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: standard-adapter-preview
+          path: |
+            out/standard-host
+            src/Connector.Host/bin/Release/*.nupkg
