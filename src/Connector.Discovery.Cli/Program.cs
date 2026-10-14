@@ -1,9 +1,11 @@
 using Connector.Features.Discovery;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Connector.Features.Deployment.ValidateBinding;
 
 if (args.Length < 3 || !Guid.TryParse(args[0], out var subscription))
 {
-    Console.Error.WriteLine("Usage: <subscription-guid> <resource-group> <apim-name> [apis|versions|operations|export] [api-name]");
+    Console.Error.WriteLine("Usage: <subscription-guid> <resource-group> <apim-name> [apis|versions|operations|export|validate-workflow] [api-name|workflow-path]");
     return 2;
 }
 
@@ -14,6 +16,17 @@ try
     var discovery = new ApimDiscoveryClient(http, subscription, args[1], args[2], _ =>
         Task.FromResult(Environment.GetEnvironmentVariable("APIM_DEVELOPER_ARM_TOKEN") ?? ""));
     var command = args.Length > 3 ? args[3] : "apis";
+    if (command == "validate-workflow" && args.Length == 5)
+    {
+        var workflow = JsonNode.Parse(await File.ReadAllTextAsync(args[4]))?.AsObject() ?? throw new DiscoveryException("WorkflowInvalid");
+        var bindings = WorkflowBindings.Read(workflow);
+        foreach (var saved in bindings)
+        {
+            await BindingValidator.ValidateTargetAsync(saved.Binding, discovery);
+            Console.WriteLine(JsonSerializer.Serialize(new { action = saved.ActionPath, compatibility = "Compatible" }));
+        }
+        return 0;
+    }
     object result = command switch
     {
         "apis" => await discovery.ListApisAsync(),
