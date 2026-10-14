@@ -1,0 +1,55 @@
+{
+  "issue": 2,
+  "status": "source-investigation-only",
+  "date": "2026-10-14",
+  "designerSourceCommit": "328a2543863484f1e41358b649bfdbb24c9ed7f2",
+  "connectorSampleCommit": "f1fa56c137aca3412920faaf6e9cdb70aa5c0c8b",
+  "observations": [
+    {
+      "source": "https://github.com/Azure/LogicAppsUX/blob/328a2543863484f1e41358b649bfdbb24c9ed7f2/libs/logic-apps-shared/src/designer-client-services/lib/standard/connector.ts",
+      "symbols": [
+        "_listDynamicValues",
+        "_getDynamicSchema"
+      ],
+      "finding": "Standard designer posts parameters and configuration to operationGroups/{connector}/operations/{dynamicOperation}/dynamicInvoke."
+    },
+    {
+      "source": "https://github.com/Azure/LogicAppsUX/blob/328a2543863484f1e41358b649bfdbb24c9ed7f2/libs/logic-apps-shared/src/designer-client-services/lib/base/connector.ts",
+      "symbols": [
+        "_getResponseFromDynamicApi"
+      ],
+      "finding": "Inspected client unwraps response and expects statusCode string OK before returning body."
+    },
+    {
+      "source": "https://github.com/Azure/LogicAppsUX/blob/328a2543863484f1e41358b649bfdbb24c9ed7f2/libs/logic-apps-shared/src/designer-client-services/lib/standard/operationmanifest.ts",
+      "symbols": [
+        "getOperationManifest"
+      ],
+      "finding": "Service-provider manifests are loaded from hostruntime operationGroups."
+    },
+    {
+      "source": "https://github.com/Azure/LogicAppsUX/blob/328a2543863484f1e41358b649bfdbb24c9ed7f2/libs/designer-v2/src/lib/core/utils/parameters/dynamicdata.ts",
+      "symbols": [
+        "getDynamicValues",
+        "getDynamicSchema",
+        "getDynamicInputsFromSchema",
+        "getDynamicOutputsFromSchema"
+      ],
+      "finding": "Designer processes dynamic lists and schema-derived input/output fields."
+    }
+  ],
+  "unproven": [
+    "Custom extension dispatch for dynamicInvoke",
+    "SDK manifest encoding and dynamic handler interfaces",
+    "Deployed Azure Portal version compatibility",
+    "Authenticated developer discovery without privilege widening",
+    "Selection invalidation and workflow save/reopen",
+    "Azure deployment and .NET build"
+  ],
+  "execution": {
+    "dotnetBuild": "not-run",
+    "armWhatIf": "not-run",
+    "azureDeployment": "not-run",
+    "portalDemo": "not-run"
+  }
+}

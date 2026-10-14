@@ -1,0 +1,102 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "apimServiceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Existing dedicated test APIM instance."
+      }
+    },
+    "pocName": {
+      "type": "string",
+      "defaultValue": "la-apim-poc-orders",
+      "minLength": 3,
+      "maxLength": 40,
+      "metadata": {
+        "description": "Unique version-set/API prefix. Existing resources with these names will be updated."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ApiManagement/service/apiVersionSets",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('apimServiceName'), parameters('pocName'))]",
+      "properties": {
+        "displayName": "Synthetic Orders PoC",
+        "versioningScheme": "Segment"
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}-v1', parameters('apimServiceName'), parameters('pocName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', parameters('apimServiceName'), parameters('pocName'))]"
+      ],
+      "properties": {
+        "displayName": "Synthetic Orders v1",
+        "path": "[parameters('pocName')]",
+        "protocols": [
+          "https"
+        ],
+        "subscriptionRequired": true,
+        "apiVersion": "v1",
+        "apiVersionSetId": "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', parameters('apimServiceName'), parameters('pocName'))]",
+        "format": "openapi+json",
+        "value": "{\"openapi\":\"3.0.1\",\"info\":{\"title\":\"Synthetic Orders PoC\",\"version\":\"v1\"},\"paths\":{\"/orders/{orderId}\":{\"get\":{\"operationId\":\"GetOrder\",\"summary\":\"Get a synthetic order\",\"parameters\":[{\"name\":\"orderId\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}],\"responses\":{\"200\":{\"description\":\"Synthetic order\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/Order\"}}}}}}},\"/orders\":{\"post\":{\"operationId\":\"CreateOrder\",\"summary\":\"Create a synthetic order\",\"requestBody\":{\"required\":true,\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"required\":[\"customerName\"],\"properties\":{\"customerName\":{\"type\":\"string\"}}}}}},\"responses\":{\"201\":{\"description\":\"Synthetic order created\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/Order\"}}}}}}}},\"components\":{\"schemas\":{\"Order\":{\"type\":\"object\",\"required\":[\"id\",\"customerName\"],\"properties\":{\"id\":{\"type\":\"string\"},\"customerName\":{\"type\":\"string\"}}}}}}"
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/policies",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}-v1/policy', parameters('apimServiceName'), parameters('pocName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimServiceName'), format('{0}-v1', parameters('pocName')))]"
+      ],
+      "properties": {
+        "format": "rawxml",
+        "value": "<policies><inbound><base /><return-response><set-status code=\"200\" reason=\"OK\" /><set-header name=\"Content-Type\" exists-action=\"override\"><value>application/json</value></set-header><set-body>{\"id\":\"poc-order-001\",\"customerName\":\"Synthetic customer\"}</set-body></return-response></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>"
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}-v2', parameters('apimServiceName'), parameters('pocName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', parameters('apimServiceName'), parameters('pocName'))]"
+      ],
+      "properties": {
+        "displayName": "Synthetic Orders v2",
+        "path": "[parameters('pocName')]",
+        "protocols": [
+          "https"
+        ],
+        "subscriptionRequired": true,
+        "apiVersion": "v2",
+        "apiVersionSetId": "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', parameters('apimServiceName'), parameters('pocName'))]",
+        "format": "openapi+json",
+        "value": "{\"openapi\":\"3.0.1\",\"info\":{\"title\":\"Synthetic Orders PoC\",\"version\":\"v2\"},\"paths\":{\"/orders/{orderId}\":{\"get\":{\"operationId\":\"GetOrder\",\"summary\":\"Get a synthetic order\",\"parameters\":[{\"name\":\"orderId\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}],\"responses\":{\"200\":{\"description\":\"Synthetic order\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/Order\"}}}}}}},\"/orders\":{\"post\":{\"operationId\":\"CreateOrder\",\"summary\":\"Create a synthetic order\",\"requestBody\":{\"required\":true,\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"required\":[\"customerName\"],\"properties\":{\"customerName\":{\"type\":\"string\"}}}}}},\"responses\":{\"201\":{\"description\":\"Synthetic order created\",\"content\":{\"application/json\":{\"schema\":{\"$ref\":\"#/components/schemas/Order\"}}}}}}}},\"components\":{\"schemas\":{\"Order\":{\"type\":\"object\",\"required\":[\"id\",\"customerName\"],\"properties\":{\"id\":{\"type\":\"string\"},\"customerName\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"created\",\"confirmed\"]}}}}}}"
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/apis/policies",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}-v2/policy', parameters('apimServiceName'), parameters('pocName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', parameters('apimServiceName'), format('{0}-v2', parameters('pocName')))]"
+      ],
+      "properties": {
+        "format": "rawxml",
+        "value": "<policies><inbound><base /><return-response><set-status code=\"200\" reason=\"OK\" /><set-header name=\"Content-Type\" exists-action=\"override\"><value>application/json</value></set-header><set-body>{\"id\":\"poc-order-001\",\"customerName\":\"Synthetic customer\",\"status\":\"created\"}</set-body></return-response></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>"
+      }
+    }
+  ],
+  "outputs": {
+    "versionSetId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ApiManagement/service/apiVersionSets', parameters('apimServiceName'), parameters('pocName'))]"
+    }
+  }
+}
