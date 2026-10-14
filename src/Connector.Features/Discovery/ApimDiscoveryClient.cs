@@ -48,7 +48,15 @@ public sealed class ApimDiscoveryClient
     public async Task<IReadOnlyList<Api>> ListVersionsAsync(string selectedApiName, CancellationToken cancellationToken = default)
     {
         var apis = await ListApisAsync(cancellationToken);
-        var selected = apis.SingleOrDefault(api => api.Name.Equals(selectedApiName, StringComparison.OrdinalIgnoreCase))
+        var selector = selectedApiName.StartsWith("api:", StringComparison.Ordinal) ? selectedApiName[4..] : selectedApiName;
+        if (selector.StartsWith("versionset:", StringComparison.Ordinal))
+        {
+            var family = selector[11..];
+            var versions = apis.Where(api => api.VersionSetId is not null && api.VersionSetId.Split('/').Last().Equals(family, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (versions.Length == 0) throw new DiscoveryException("ApiNotVisible");
+            return versions;
+        }
+        var selected = apis.SingleOrDefault(api => api.Name.Equals(selector, StringComparison.OrdinalIgnoreCase))
             ?? throw new DiscoveryException("ApiNotVisible");
         return apis.Where(api => selected.VersionSetId is null
             ? api.Id.Equals(selected.Id, StringComparison.OrdinalIgnoreCase)

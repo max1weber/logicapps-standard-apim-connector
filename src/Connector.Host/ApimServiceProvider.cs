@@ -88,7 +88,7 @@ public sealed class ApimServiceProvider(Func<HttpClient>? clientFactory = null, 
                 var key = keySetting is null ? null : Setting(keySetting);
                 var result = await new ApiExecutor(http).InvokeAsync(binding, payload,
                     new Uri(profile.Value<string>("gatewayBaseUrl") ?? throw new DiscoveryException("GatewayMissing")), token.AccessToken, key, ct);
-                return new ServiceOperationResponse(result.Body is null ? JValue.CreateNull() : JToken.Parse(result.Body.ToJsonString()), result.Status);
+                return new ServiceOperationResponse(result.Body is null ? JValue.CreateNull() : JToken.Parse(result.Body.ToJsonString()), result.Status, result.RetryAfter, request.OperationExecutionContext?.Id ?? "");
             }
             if (!InternalOperations.Contains(operationId)) throw new DiscoveryException("UnknownOperation");
             var setting = profile.Value<string>("developerTokenSetting") ?? throw new DiscoveryException("DeveloperTokenSettingMissing");
@@ -101,7 +101,7 @@ public sealed class ApimServiceProvider(Func<HttpClient>? clientFactory = null, 
                 case "listApis":
                     var apis = await discovery.ListApisAsync(ct);
                     body = JArray.FromObject(apis.GroupBy(api => api.VersionSetId ?? api.Id, StringComparer.OrdinalIgnoreCase)
-                        .Select(group => new { value = group.First().Name, displayName = group.First().DisplayName }));
+                        .Select(group => new { value = group.First().VersionSetId is null ? "api:" + group.First().Name : "versionset:" + group.First().VersionSetId!.Split('/').Last(), displayName = group.First().DisplayName }));
                     break;
                 case "listVersions":
                     body = JArray.FromObject((await discovery.ListVersionsAsync(Parameter("apiName"), ct))

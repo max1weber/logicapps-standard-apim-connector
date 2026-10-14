@@ -10,7 +10,7 @@ namespace Connector.Features.Execution.InvokeOperation;
 
 public sealed record OperationBinding(string ApiName, string? Version, string OperationId, string Method,
     string ApiPath, string OperationPath, VersionRouting? Routing, JsonObject Inputs, JsonObject Outputs, string ApiSelector);
-public sealed record ApiResult(HttpStatusCode Status, JsonNode? Body);
+public sealed record ApiResult(HttpStatusCode Status, JsonNode? Body, TimeSpan? RetryAfter = null);
 
 public sealed class ApiExecutor(HttpClient http)
 {
@@ -69,7 +69,9 @@ public sealed class ApiExecutor(HttpClient http)
         if (binding.Routing?.Scheme == "Header") request.Headers.Add(binding.Routing.HeaderName ?? throw new DiscoveryException("VersionHeaderMissing"), binding.Version);
         if (payload["body"] is JsonNode body) request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        if ((int)response.StatusCode >= 300) return new ApiResult(response.StatusCode, new JsonObject { ["error"] = "ApiRequestFailed", ["statusCode"] = (int)response.StatusCode });
+        var retryAfter = response.Headers.RetryAfter?.Delta;
+        if (retryAfter is null && response.Headers.RetryAfter?.Date is DateTimeOffset date) retryAfter = date > DateTimeOffset.UtcNow ? date - DateTimeOffset.UtcNow : TimeSpan.Zero;
+        if ((int)response.StatusCode >= 300) return new ApiResult(response.StatusCode, new JsonObject { ["error"] = "ApiRequestFailed", ["statusCode"] = (int)response.StatusCode }, retryAfter);
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var buffer = new MemoryStream();
         var bytes = new byte[8192];

@@ -98,6 +98,7 @@ parameters["apiName"] = new JValue("customers-v1");
 using (var result = await sdkProvider.InvokeOperation("invokeApi", connection, new TestRequest(parameters)))
     Require(result.HttpStatus == HttpStatusCode.BadRequest && result.Body["error"]?.Value<string>() == "BindingSelectionChanged", "Stale family selection accepted");
 Console.WriteLine("PASS: schemas, SDK dispatch, selector invalidation and GET/POST runtime without ARM requests");
+foreach (var setting in typeof(OperationManifestSettings).GetProperties()) Console.WriteLine("SDK_SETTING " + setting.Name + " " + setting.PropertyType);
 
 static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
 static void Fails(string expected, Action action)
