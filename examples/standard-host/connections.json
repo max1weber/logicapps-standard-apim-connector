@@ -1,0 +1,1 @@
+{"serviceProviderConnections":{"apim":{"displayName":"APIM test profile","parameterValues":{"connectionString":"@appsetting('APIM_CONNECTION_PROFILE')"},"serviceProvider":{"id":"/serviceProviders/apimconnector"}}}}
