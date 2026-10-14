@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using Microsoft.Azure.Workflows.ServiceProviders.Abstractions;
-var extra = new[] { typeof(ServiceOperationApi).GetProperty("Properties")!.PropertyType, typeof(ServiceOperation).GetProperty("Properties")!.PropertyType, typeof(ServiceProviderAuthenticationToken), typeof(ServiceOperationContext) };
+var extra = new[] { typeof(ServiceOperationApi).GetProperty("Properties")!.PropertyType, typeof(ServiceOperation).GetProperty("Properties")!.PropertyType, typeof(ServiceProviderAuthenticationToken), typeof(ServiceOperationContext), typeof(ServiceOperationApiProperties), typeof(ConnectionParameters), typeof(Microsoft.Azure.Workflows.ServiceProviders.Abstractions.Entities.DynamicStateCustomDynamicList), typeof(Microsoft.Azure.Workflows.ServiceProviders.Abstractions.Entities.DynamicStateCustomDynamicProperties) };
 var selected = new[] { typeof(IServiceOperationsProvider), typeof(ServiceOperationManifest), typeof(ServiceOperationRequest), typeof(ServiceOperationResponse), typeof(ServiceOperationApi), typeof(ServiceOperation), typeof(ServiceOperationManifest).GetProperty("Inputs")!.PropertyType }.Concat(extra).ToArray();
 foreach (var type in selected)
 {
@@ -12,6 +12,19 @@ foreach (var type in selected)
     foreach (var property in type.GetProperties()) Console.WriteLine(" PROPERTY " + property.PropertyType + " " + property.Name + " JSON=" + string.Join(",", property.CustomAttributes.Select(a => a.ToString())));
 }
 var engine = Directory.GetFiles(AppContext.BaseDirectory, "Microsoft.Azure.Workflows*.dll").Select(Assembly.LoadFrom).Select(a => a.GetType("Microsoft.Azure.Workflows.Data.Engines.BuiltInOperationDynamicRequestEngine")).First(t => t is not null)!;
+foreach (var assembly in Directory.GetFiles(AppContext.BaseDirectory, "Microsoft.Azure.Workflows*.dll").Select(Assembly.LoadFrom))
+{
+    Type[] types; try { types = assembly.GetExportedTypes(); } catch (ReflectionTypeLoadException e) { types = e.Types.Where(t => t is not null).Cast<Type>().ToArray(); }
+    foreach (var type in types.Where(t => t.FullName!.Contains("Controllers") || t.Name.Contains("ServiceProvider")))
+    foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Where(m => m.Name.Contains("DynamicInvoke")))
+    {
+        Console.WriteLine("DISPATCH OWNER " + type.FullName + " " + method);
+        Console.WriteLine("ATTR " + string.Join(",", method.CustomAttributes.Select(a => a.ToString())));
+        var machine = method.GetCustomAttribute<AsyncStateMachineAttribute>()?.StateMachineType;
+        var body = machine?.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.NonPublic) ?? method;
+        if (body.GetMethodBody() is not null) Dump(body);
+    }
+}
 var m = engine.GetMethod("InvokeDynamicRequest")!;
 var state = m.GetCustomAttribute<AsyncStateMachineAttribute>()?.StateMachineType;
 Dump(state?.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.NonPublic) ?? m);
