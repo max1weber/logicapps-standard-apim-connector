@@ -27,3 +27,7 @@ Uitvoerbare commando’s volgen wanneer de PoC SDK/runtimecompatibiliteit heeft 
 ## Acceptatie
 
 Doorloop de handleiding in een schoon Standard-project. Ontdek nieuwe API’s/versies zonder extensionbuild. Voer opgeslagen operaties uit met uitgeschakelde managementtoegang voor discovery. Controleer retries, timeouts en beveiligde run history. Leg designerbeperkingen vóór release vast; installatie is nog niet gevalideerd.
+
+## Controle vóór deployment
+
+Voer vóór promotie van een opgeslagen workflow de alleen-lezen-[doelcontractcontrole](promotion-validation.md) uit. Deze blokkeert ontbrekende selecties en gewijzigde contracten zonder de workflow te herschrijven.

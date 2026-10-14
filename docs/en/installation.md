@@ -27,3 +27,7 @@ Executable commands will be added after the PoC establishes the runtime/SDK matr
 ## Acceptance
 
 Follow the guide in a clean Standard project. Discover a newly added API/version without rebuilding the extension. Execute a saved operation while discovery management access is disabled. Verify retries, timeouts and secure history. Unsupported designer behaviours must be documented before release; do not claim installation is validated yet.
+
+## Deployment preflight
+
+Before promoting a saved workflow, run the read-only [target contract validation](promotion-validation.md). It blocks missing selections and changed contracts without rewriting the workflow.
