@@ -5,6 +5,9 @@ using Connector.Host;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
+using Connector.Features.Execution.InvokeOperation;
+using System.Net;
+using System.Text;
 
 var v1 = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "v1.openapi.json")))!.AsObject();
 var v2 = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "v2.openapi.json")))!.AsObject();
@@ -36,11 +39,54 @@ Require(manifest["inputs"]?["properties"]?["apiName"]?["x-ms-dynamic-list"]?["dy
 Require(manifest["inputs"]?["properties"]?["apiVersion"]?["x-ms-dynamic-list"]?["parameters"]?["apiName"]?["parameterReference"]?.Value<string>() == "apiName", "Version dependency missing");
 Require(manifest["outputs"]?["properties"]?["body"]?["x-ms-dynamic-properties"]?["dynamicState"]?["extension"]?["operationId"]?.Value<string>() == "outputSchema", "Dynamic output handler missing");
 Require(provider.GetOperations(true).Count() == 6, "Internal dynamic handlers not registered");
-Console.WriteLine("PASS: schemas and pinned SDK metadata register dependent discovery handlers");
+var binding = new OperationBinding("orders-v1", "v1", "GetOrder", "GET", "poc-orders", "/orders/{orderId}", new VersionRouting("Segment", null, null), one.Inputs, one.Outputs);
+using (var handler = new GatewayHandler(async request =>
+{
+    Require(request.RequestUri!.Host == "gateway.example.nl", "Runtime called management or an unexpected host");
+    Require(request.RequestUri.AbsolutePath == "/gateway/poc-orders/v1/orders/a%20b", "Version/path encoding wrong");
+    Require(request.Headers.Authorization?.Parameter == "business-token", "Business token missing");
+    await Task.CompletedTask;
+}, HttpStatusCode.OK, "{\"id\":\"a b\",\"customerName\":\"Example\"}"))
+using (var http = new HttpClient(handler))
+{
+    var result = await new ApiExecutor(http).InvokeAsync(binding, new JsonObject { ["pathParameters"] = new JsonObject { ["orderId"] = "a b" } }, new Uri("https://gateway.example.nl/gateway"), "business-token", null);
+    Require(result.Status == HttpStatusCode.OK && result.Body?["id"]?.GetValue<string>() == "a b", "GET response lost");
+}
+var postBinding = binding with { Method = "POST", OperationId = "CreateOrder", OperationPath = "/orders", Inputs = post.Inputs, Outputs = post.Outputs };
+using (var handler = new GatewayHandler(async request =>
+{
+    Require(request.Method == HttpMethod.Post, "POST method lost");
+    var content = JsonNode.Parse(await request.Content!.ReadAsStringAsync())!;
+    Require(content["customerName"]?.GetValue<string>() == "Example", "POST body wrong");
+}, HttpStatusCode.Created, "{\"id\":\"new\",\"customerName\":\"Example\"}"))
+using (var http = new HttpClient(handler))
+{
+    var result = await new ApiExecutor(http).InvokeAsync(postBinding, new JsonObject { ["body"] = new JsonObject { ["customerName"] = "Example" } }, new Uri("https://gateway.example.nl/"), "business-token", null);
+    Require(result.Status == HttpStatusCode.Created, "201 status lost");
+}
+using (var http = new HttpClient(new GatewayHandler(_ => throw new Exception("Validation should prevent HTTP"), HttpStatusCode.OK, "{}")))
+{
+    await FailsAsync("RequiredValueMissing", () => new ApiExecutor(http).InvokeAsync(postBinding, new JsonObject { ["body"] = new JsonObject() }, new Uri("https://gateway.example.nl/"), "business-token", null));
+}
+Console.WriteLine("PASS: schemas, pinned SDK metadata and GET/POST runtime without ARM requests");
 
 static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
 static void Fails(string expected, Action action)
 {
     try { action(); throw new Exception("Expected " + expected); }
     catch (DiscoveryException error) { Require(error.Code == expected, "Wrong diagnostic " + error.Code); }
+}
+static async Task FailsAsync(string expected, Func<Task<ApiResult>> action)
+{
+    try { await action(); throw new Exception("Expected " + expected); }
+    catch (DiscoveryException error) { Require(error.Code == expected, "Wrong diagnostic " + error.Code); }
+}
+
+sealed class GatewayHandler(Func<HttpRequestMessage, Task> inspect, HttpStatusCode status, string body) : HttpMessageHandler
+{
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        await inspect(request);
+        return new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+    }
 }

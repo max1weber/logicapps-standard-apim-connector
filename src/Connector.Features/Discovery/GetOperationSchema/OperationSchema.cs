@@ -7,6 +7,19 @@ public sealed record OperationSchemas(JsonObject Inputs, JsonObject Outputs);
 /// <summary>Normalises one REST/JSON operation. Unsupported constructs fail explicitly.</summary>
 public static class OperationSchema
 {
+    public static void RemoveVersionParameter(JsonObject inputs, VersionRouting? routing)
+    {
+        var group = routing?.Scheme switch { "Query" => "queryParameters", "Header" => "headers", _ => null };
+        var name = routing?.Scheme == "Query" ? routing.QueryName : routing?.HeaderName;
+        if (group is null || name is null || inputs["properties"]?[group] is not JsonObject obj) return;
+        obj["properties"]?.AsObject().Remove(name);
+        if (obj["required"] is JsonArray required)
+            for (var i = required.Count - 1; i >= 0; i--) if (required[i]?.GetValue<string>() == name) required.RemoveAt(i);
+        if (obj["properties"]?.AsObject().Count == 0) inputs["properties"]!.AsObject().Remove(group);
+        if ((obj["required"] as JsonArray)?.Count == 0 && inputs["required"] is JsonArray groups)
+            for (var i = groups.Count - 1; i >= 0; i--) if (groups[i]?.GetValue<string>() == group) groups.RemoveAt(i);
+    }
+
     public static OperationSchemas Read(JsonObject contract, string method, string urlTemplate)
     {
         var path = urlTemplate.Split('?')[0];

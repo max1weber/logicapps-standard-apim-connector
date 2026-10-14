@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json.Nodes;
 using Connector.Features.Discovery;
 using Connector.Features.Discovery.GetOperationSchema;
+using Connector.Features.Execution.InvokeOperation;
 using Microsoft.Azure.Workflows.ServiceProviders.Abstractions;
 using Microsoft.Azure.Workflows.ServiceProviders.Abstractions.Entities;
 using Microsoft.WindowsAzure.ResourceStack.Common.Collections;
@@ -67,20 +68,33 @@ public sealed class ApimServiceProvider : IServiceOperationsProvider
 
     public async Task<ServiceOperationResponse> InvokeOperation(string operationId, InsensitiveDictionary<JToken> connectionParameters, ServiceOperationRequest request)
     {
-        if (!InternalOperations.Contains(operationId))
-            return new ServiceOperationResponse(new JObject { ["error"] = "RuntimeBindingNotImplemented" }, HttpStatusCode.NotImplemented);
         try
         {
             var profile = JObject.Parse(connectionParameters["connectionString"].Value<string>()!);
-            var setting = profile.Value<string>("developerTokenSetting") ?? throw new DiscoveryException("DeveloperTokenSettingMissing");
             using var handler = new HttpClientHandler { AllowAutoRedirect = false };
             using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
-            var discovery = new ApimDiscoveryClient(http, Guid.Parse(profile.Value<string>("subscriptionId")!),
-                profile.Value<string>("resourceGroup")!, profile.Value<string>("serviceName")!,
-                _ => Task.FromResult(Environment.GetEnvironmentVariable(setting) ?? ""));
             string Parameter(string name) => request.Parameters.TryGetValue(name, out var value) ? value.Value<string>() ?? "" : "";
             var apiName = string.IsNullOrEmpty(Parameter("apiVersion")) ? Parameter("apiName") : Parameter("apiVersion");
             var ct = request.CancellationToken;
+            if (operationId == "invokeApi")
+            {
+                var payload = JsonNode.Parse(request.Parameters["payload"].ToString())!.AsObject();
+                var snapshot = payload["_binding"]?.GetValue<string>() ?? throw new DiscoveryException("BindingSnapshotMissing");
+                var binding = System.Text.Json.JsonSerializer.Deserialize<OperationBinding>(snapshot) ?? throw new DiscoveryException("BindingSnapshotInvalid");
+                payload.Remove("_binding");
+                if (binding.ApiName != apiName || binding.OperationId != Parameter("operationId")) throw new DiscoveryException("BindingSelectionChanged");
+                var token = await request.GetAuthenticationToken(profile.Value<string>("audience") ?? throw new DiscoveryException("AudienceMissing"));
+                var keySetting = profile.Value<string>("subscriptionKeySetting");
+                var key = keySetting is null ? null : Environment.GetEnvironmentVariable(keySetting);
+                var result = await new ApiExecutor(http).InvokeAsync(binding, payload,
+                    new Uri(profile.Value<string>("gatewayBaseUrl") ?? throw new DiscoveryException("GatewayMissing")), token.AccessToken, key, ct);
+                return new ServiceOperationResponse(result.Body is null ? JValue.CreateNull() : JToken.Parse(result.Body.ToJsonString()), result.Status);
+            }
+            if (!InternalOperations.Contains(operationId)) throw new DiscoveryException("UnknownOperation");
+            var setting = profile.Value<string>("developerTokenSetting") ?? throw new DiscoveryException("DeveloperTokenSettingMissing");
+            var discovery = new ApimDiscoveryClient(http, Guid.Parse(profile.Value<string>("subscriptionId")!),
+                profile.Value<string>("resourceGroup")!, profile.Value<string>("serviceName")!,
+                _ => Task.FromResult(Environment.GetEnvironmentVariable(setting) ?? ""));
             JToken body;
             switch (operationId)
             {
@@ -98,16 +112,31 @@ public sealed class ApimServiceProvider : IServiceOperationsProvider
                         .Select(operation => new { value = operation.Name, displayName = operation.DisplayName + " (" + operation.Method + ")" }));
                     break;
                 default:
+                    var versions = await discovery.ListVersionsAsync(Parameter("apiName"), ct);
+                    var api = versions.SingleOrDefault(candidate => candidate.Name == apiName) ?? throw new DiscoveryException("ApiVersionSelectionChanged");
                     var selected = (await discovery.ListOperationsAsync(apiName, ct)).SingleOrDefault(operation => operation.Name == Parameter("operationId"))
                         ?? throw new DiscoveryException("OperationNotVisible");
                     var contract = await discovery.ExportContractAsync(apiName, ct);
                     var schema = OperationSchema.Read(JsonNode.Parse(contract.GetRawText())!.AsObject(), selected.Method, selected.UrlTemplate);
+                    if (operationId == "inputSchema")
+                    {
+                        var routing = api.VersionSetId is null ? null : await discovery.GetVersionRoutingAsync(api.VersionSetId, ct);
+                        OperationSchema.RemoveVersionParameter(schema.Inputs, routing);
+                        var binding = new OperationBinding(api.Name, api.Version, selected.Name, selected.Method, api.Path, selected.UrlTemplate,
+                            routing, schema.Inputs.DeepClone().AsObject(), schema.Outputs.DeepClone().AsObject());
+                        schema.Inputs["properties"]!.AsObject()["_binding"] = new JsonObject
+                        {
+                            ["type"] = "string", ["x-ms-visibility"] = "internal", ["default"] = System.Text.Json.JsonSerializer.Serialize(binding)
+                        };
+                    }
                     body = JToken.Parse((operationId == "inputSchema" ? schema.Inputs : schema.Outputs).ToJsonString());
                     break;
             }
             return new ServiceOperationResponse(body, HttpStatusCode.OK);
         }
         catch (DiscoveryException error) { return new ServiceOperationResponse(new JObject { ["error"] = error.Code }, error.Status ?? HttpStatusCode.BadRequest); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception) { return new ServiceOperationResponse(new JObject { ["error"] = "ConnectorRequestInvalidOrFailed" }, HttpStatusCode.BadRequest); }
     }
 
     public ServiceOperationManifest Manifest(string operationId)
