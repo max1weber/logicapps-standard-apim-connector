@@ -13,7 +13,7 @@ Revisie: 2026-10-14. Onderdeel van Azure Portal-PoC #2. Dit is uitvoerbare disco
 - OpenAPI-3-JSON-export via tijdelijke SAS-URL; ARM-token wordt niet meegestuurd naar storage.
 - Developertoken per request, gescopeerde paginering, geredigeerde fouten en begrensde JSON-documenten.
 
-De aanroeper levert een developer-ARM-token. Er is geen impliciete host managed identity, delegated token exchange of gedeelde cache. Zichtbaarheid volgt de echte ARM-rechten van het token; servicebrede lijsttoegang kan alle API-metadata tonen. Dit bewijst geen API-specifieke autorisatie of designertokendoorgifte. Transportredirects moeten uitstaan; de CLI stelt dat in.
+De aanroeper levert een developer-ARM-token. Er is geen impliciete host managed identity, delegated token exchange of gedeelde cache. Zichtbaarheid volgt de echte ARM-rechten van het token; servicebrede lijsttoegang kan alle API-metadata tonen. Dit bewijst geen API-specifieke autorisatie of designertokendoorgifte. Clients met standaard Authorization-headers worden vóór verzenden geweigerd. Transportredirects moeten uitstaan; de CLI stelt dat in.
 
 ## Bouwen en uitvoeren
 
@@ -39,7 +39,7 @@ Gebruik de resourcenaam uit de inventaris, niet de displaynaam. Contractoutput k
 
 ## Verificatiegrens
 
-Het consoletestprogramma controleert de publieke discoveryclient met deterministische ARM/storage-HTTP-responses: paginering/revisiefilter, onversioneerde selectie, onveilige paginalinks, 403-redactie, tokenscheiding bij export en operatierouting. Uitvoering is via dotnet run, niet dotnet test. Dit bewijst geen live ARM-contracten, roltoewijzingen, package-installatie of Portalweergave. CI bouwt de CLI en draait de controles; Azure-validatie staat apart.
+Het consoletestprogramma controleert de publieke discoveryclient met deterministische ARM/storage-HTTP-responses: elf scenario’s voor paginering/revisiefilter, onversioneerde selectie, onveilige paginalinks, 403-redactie, tokenscheiding bij export, operatierouting, versiefamilies, routingmetadata, standaard authheaders en geweigerde exporthosts. Uitvoering is via dotnet run, niet dotnet test. Dit bewijst geen live ARM-contracten, roltoewijzingen, package-installatie of Portalweergave. CI bouwt de CLI en draait de controles; Azure-validatie staat apart.
 
 ## Netwerkbesluit
 

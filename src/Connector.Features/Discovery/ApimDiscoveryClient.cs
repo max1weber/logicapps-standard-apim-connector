@@ -111,6 +111,8 @@ public sealed class ApimDiscoveryClient
 
     private async Task<JsonDocument> ReadAsync(Uri uri, bool authenticated, CancellationToken cancellationToken)
     {
+        if (http.DefaultRequestHeaders.Contains("Authorization"))
+            throw new DiscoveryException("UnsafeDefaultAuthorization");
         using var request = new HttpRequestMessage(HttpMethod.Get, uri);
         if (authenticated)
         {

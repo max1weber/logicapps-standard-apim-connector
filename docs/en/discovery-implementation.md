@@ -13,7 +13,7 @@ Revision: 2026-10-14. Part of Azure Portal PoC #2. This is executable discovery 
 - OpenAPI 3 JSON export through a temporary SAS URL. The ARM bearer token is never added to the storage request.
 - Per-request developer token, scoped pagination, error redaction and bounded JSON documents.
 
-The caller supplies a developer ARM token. There is no implicit host managed identity, no delegated token exchange and no shared cache. Visibility is governed by that token's actual ARM permissions; a service-wide list permission can expose all API metadata in that service. This does not establish API-specific authorisation or designer token forwarding. Transport redirects must be disabled; the CLI does this.
+The caller supplies a developer ARM token. There is no implicit host managed identity, no delegated token exchange and no shared cache. Visibility is governed by that token's actual ARM permissions; a service-wide list permission can expose all API metadata in that service. This does not establish API-specific authorisation or designer token forwarding. Clients with default Authorization headers are rejected before sending requests. Transport redirects must be disabled; the CLI does this.
 
 ## Build and run
 
@@ -39,7 +39,7 @@ Use the API resource name returned by the inventory, not its display name. Contr
 
 ## Verification boundary
 
-The console test harness exercises the public discovery client using deterministic ARM/storage HTTP responses. It covers paginated inventory/revision exclusion, unversioned selection, hostile pagination links, 403 redaction, token separation on export, and operation routing. It is run with dotnet run, not dotnet test. These checks do not prove live ARM contracts, role assignments, package installation or Portal rendering. CI builds the CLI and runs the harness; Azure validation remains separate.
+The console test harness exercises the public discovery client using deterministic ARM/storage HTTP responses. Eleven scenarios cover paginated inventory/revision exclusion, unversioned selection, hostile pagination links, 403 redaction, token separation on export, operation routing, version-family selection, version routing metadata, unsafe default headers and rejected export hosts. It is run with dotnet run, not dotnet test. These checks do not prove live ARM contracts, role assignments, package installation or Portal rendering. CI builds the CLI and runs the harness; Azure validation remains separate.
 
 ## Network decision
 

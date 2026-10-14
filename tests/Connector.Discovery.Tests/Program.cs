@@ -67,6 +67,50 @@ await Check("Operations preserve HTTP method and URL template", async () =>
     Require(operations.Count == 1 && operations[0].Method == "GET" && operations[0].UrlTemplate == "/orders/{orderId}", "Operation routing lost");
 });
 
+await Check("Version selection includes only the selected family", async () =>
+{
+    using var handler = new SequenceHandler((request => { }, "{\"value\":[{\"id\":\"one\",\"name\":\"orders-v1\",\"properties\":{\"apiVersionSetId\":\"orders\",\"apiVersion\":\"v1\"}},{\"id\":\"two\",\"name\":\"orders-v2\",\"properties\":{\"apiVersionSetId\":\"orders\",\"apiVersion\":\"v2\"}},{\"id\":\"three\",\"name\":\"customers-v1\",\"properties\":{\"apiVersionSetId\":\"customers\",\"apiVersion\":\"v1\"}}]}"));
+    using var http = new HttpClient(handler);
+    var versions = await Client(http).ListVersionsAsync("orders-v1");
+    Require(versions.Select(api => api.Version).SequenceEqual(new[] { "v1", "v2" }), "Family selection incorrect");
+});
+
+await Check("Segment, query and header routing metadata survive discovery", async () =>
+{
+    foreach (var scheme in new[] { "Segment", "Query", "Header" })
+    {
+        using var handler = new SequenceHandler((request => { }, "{\"properties\":{\"versioningScheme\":\"" + scheme + "\",\"versionHeaderName\":\"x-api-version\",\"versionQueryName\":\"version\"}}"));
+        using var http = new HttpClient(handler);
+        var routing = await Client(http).GetVersionRoutingAsync(scope + "/apiVersionSets/orders");
+        Require(routing.Scheme == scheme && routing.HeaderName == "x-api-version" && routing.QueryName == "version", "Routing metadata lost");
+    }
+});
+
+await Check("Default HTTP bearer headers are rejected before any request", async () =>
+{
+    using var handler = new SequenceHandler();
+    using var http = new HttpClient(handler);
+    http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "must-not-leak");
+    await Fails("UnsafeDefaultAuthorization", async () => { await Client(http).ExportContractAsync("orders-v1"); });
+    handler.AssertComplete();
+});
+
+await Check("Export links outside Azure blob storage are rejected", async () =>
+{
+    using var handler = new SequenceHandler((request => { }, "{\"value\":{\"link\":\"https://evil.example/export?sig=synthetic\"}}"));
+    using var http = new HttpClient(handler);
+    await Fails("InvalidExportLink", async () => { await Client(http).ExportContractAsync("orders-v1"); });
+    handler.AssertComplete();
+});
+
+await Check("Same-host pagination cannot switch to another APIM resource", async () =>
+{
+    using var handler = new SequenceHandler((request => { }, "{\"value\":[],\"nextLink\":\"https://management.azure.com" + scope + "-other/apis?api-version=2024-05-01\"}"));
+    using var http = new HttpClient(handler);
+    await Fails("InvalidManagementScope", async () => { await Client(http).ListApisAsync(); });
+    handler.AssertComplete();
+});
+
 Console.WriteLine($"PASS: {passed} public discovery scenarios");
 return 0;
 
