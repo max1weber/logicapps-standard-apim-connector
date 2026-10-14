@@ -2,15 +2,16 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using Microsoft.Azure.Workflows.ServiceProviders.Abstractions;
-var selected = new[] { typeof(IServiceOperationsProvider), typeof(ServiceOperationManifest), typeof(ServiceOperationRequest), typeof(ServiceOperationResponse), typeof(ServiceOperationApi), typeof(ServiceOperation), typeof(ServiceOperationManifest).GetProperty("Inputs")!.PropertyType };
+var extra = new[] { typeof(ServiceOperationApi).GetProperty("Properties")!.PropertyType, typeof(ServiceOperation).GetProperty("Properties")!.PropertyType, typeof(ServiceProviderAuthenticationToken), typeof(ServiceOperationContext) };
+var selected = new[] { typeof(IServiceOperationsProvider), typeof(ServiceOperationManifest), typeof(ServiceOperationRequest), typeof(ServiceOperationResponse), typeof(ServiceOperationApi), typeof(ServiceOperation), typeof(ServiceOperationManifest).GetProperty("Inputs")!.PropertyType }.Concat(extra).ToArray();
 foreach (var type in selected)
 {
     Console.WriteLine("TYPE " + type.FullName);
     foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Where(m => !m.IsSpecialName)) Console.WriteLine(" METHOD " + method + " ABSTRACT=" + method.IsAbstract);
-    foreach (var ctor in type.GetConstructors()) Console.WriteLine(" CTOR " + ctor);
+    foreach (var ctor in type.GetConstructors()) Console.WriteLine(" CTOR " + ctor + " PARAMS=" + string.Join(",", ctor.GetParameters().Select(p => p.Name + "=" + p.DefaultValue)));
     foreach (var property in type.GetProperties()) Console.WriteLine(" PROPERTY " + property.PropertyType + " " + property.Name + " JSON=" + string.Join(",", property.CustomAttributes.Select(a => a.ToString())));
 }
-var engine = Assembly.Load("Microsoft.Azure.Workflows.Data").GetType("Microsoft.Azure.Workflows.Data.Engines.BuiltInOperationDynamicRequestEngine")!;
+var engine = Directory.GetFiles(AppContext.BaseDirectory, "Microsoft.Azure.Workflows*.dll").Select(Assembly.LoadFrom).Select(a => a.GetType("Microsoft.Azure.Workflows.Data.Engines.BuiltInOperationDynamicRequestEngine")).First(t => t is not null)!;
 var m = engine.GetMethod("InvokeDynamicRequest")!;
 var state = m.GetCustomAttribute<AsyncStateMachineAttribute>()?.StateMachineType;
 Dump(state?.GetMethod("MoveNext", BindingFlags.Instance | BindingFlags.NonPublic) ?? m);
