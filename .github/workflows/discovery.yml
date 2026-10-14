@@ -1,0 +1,18 @@
+name: Discovery build and contract scenarios
+on:
+  push:
+    branches: [main, implement/apim-discovery]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  discovery:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet build src/Connector.Discovery.Cli/Connector.Discovery.Cli.csproj --configuration Release
+      - run: dotnet run --project tests/Connector.Discovery.Tests/Connector.Discovery.Tests.csproj --configuration Release
