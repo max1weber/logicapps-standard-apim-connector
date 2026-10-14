@@ -2,7 +2,7 @@
 
 [English](../en/installation.md)
 
-Revisie: 2026-10-14. Handleiding in ontwerpfase; er bestaat nog geen connectorrelease.
+Revisie: 2026-10-14. Er is een bouwbare experimentele preview; Azure/Portal-installatie is nog niet gevalideerd. Zie [Standard-adapterpreview](standard-adapter.md) voor build, settings, testdeployment, verificatie en rollback.
 
 ## Repository voorbereiden
 
