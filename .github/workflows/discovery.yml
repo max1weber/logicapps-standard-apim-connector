@@ -17,3 +17,4 @@ jobs:
       - run: dotnet run --project tools/Connector.SdkProbe/Connector.SdkProbe.csproj --configuration Release
       - run: dotnet build src/Connector.Discovery.Cli/Connector.Discovery.Cli.csproj --configuration Release
       - run: dotnet run --project tests/Connector.Discovery.Tests/Connector.Discovery.Tests.csproj --configuration Release
+      - run: dotnet run --project tests/Connector.Adapter.Tests/Connector.Adapter.Tests.csproj --configuration Release
