@@ -9,13 +9,20 @@ if (args.Length < 3 || !Guid.TryParse(args[0], out var subscription))
     return 2;
 }
 
+var command = args.Length > 3 ? args[3] : "apis";
+if (command == "apis" ? args.Length is not (3 or 4) :
+    !new[] { "versions", "operations", "export", "validate-workflow" }.Contains(command) || args.Length != 5)
+{
+    Console.Error.WriteLine("Invalid command or argument count.");
+    return 2;
+}
+
 try
 {
     using var transport = new HttpClientHandler { AllowAutoRedirect = false };
     using var http = new HttpClient(transport) { Timeout = TimeSpan.FromSeconds(60) };
     var discovery = new ApimDiscoveryClient(http, subscription, args[1], args[2], _ =>
         Task.FromResult(Environment.GetEnvironmentVariable("APIM_DEVELOPER_ARM_TOKEN") ?? ""));
-    var command = args.Length > 3 ? args[3] : "apis";
     if (command == "validate-workflow" && args.Length == 5)
     {
         var workflow = JsonNode.Parse(await File.ReadAllTextAsync(args[4]))?.AsObject() ?? throw new DiscoveryException("WorkflowInvalid");

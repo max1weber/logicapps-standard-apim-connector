@@ -47,6 +47,21 @@ var stale = workflow.DeepClone().AsObject();
 stale["definition"]!["actions"]!["Create_order"]!["inputs"]!["parameters"]!["apiName"] = "versionset:customers";
 Fails("BindingSelectionChanged", () => WorkflowBindings.Read(stale));
 Fails("NoApimBindingsFound", () => WorkflowBindings.Read(new JsonObject()));
+var nestedAction = workflow["definition"]!["actions"]!["Create_order"]!.DeepClone();
+var mixed = workflow.DeepClone().AsObject();
+var actions = mixed["definition"]!["actions"]!.AsObject();
+actions["Unrelated_data"] = new JsonObject { ["type"] = "Compose", ["inputs"] = new JsonObject
+{
+    ["type"] = 123, ["nested"] = new JsonObject { ["type"] = new JsonObject() }, ["looks_like_action"] = nestedAction.DeepClone()
+} };
+actions["Loop"] = new JsonObject { ["type"] = "Foreach", ["actions"] = new JsonObject { ["Nested"] = nestedAction.DeepClone() } };
+actions["Condition"] = new JsonObject { ["type"] = "If", ["actions"] = new JsonObject { ["Then"] = nestedAction.DeepClone() },
+    ["else"] = new JsonObject { ["actions"] = new JsonObject { ["Otherwise"] = nestedAction.DeepClone() } } };
+actions["Switch"] = new JsonObject { ["type"] = "Switch", ["cases"] = new JsonObject { ["Case1"] = new JsonObject { ["actions"] = new JsonObject { ["CaseAction"] = nestedAction.DeepClone() } } },
+    ["default"] = new JsonObject { ["actions"] = new JsonObject { ["DefaultAction"] = nestedAction.DeepClone() } } };
+actions["Scope"] = new JsonObject { ["type"] = "Scope", ["actions"] = new JsonObject { ["Scoped"] = nestedAction.DeepClone() } };
+actions["Until"] = new JsonObject { ["type"] = "Until", ["actions"] = new JsonObject { ["Repeated"] = nestedAction.DeepClone() } };
+if (WorkflowBindings.Read(mixed).Count != 8) throw new Exception("Nested real actions lost or payload data treated as actions");
 var contract = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "v1.openapi.json")))!.AsObject();
 var schema = Connector.Features.Discovery.GetOperationSchema.OperationSchema.Read(contract, "GET", "/orders/{orderId}");
 var liveSource = source with { ApiName = "health", ApiSelector = "api:health", Version = null, OperationId = "GetOrder", Method = "GET", ApiPath = "poc-orders", OperationPath = "/orders/{orderId}", Inputs = schema.Inputs, Outputs = schema.Outputs };
