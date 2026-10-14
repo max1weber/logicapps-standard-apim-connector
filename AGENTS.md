@@ -18,3 +18,8 @@ Standard roles / Standaardrollen: needs-triage, needs-info, ready-for-agent, rea
 Single-context: root GLOSSARY.md and docs/adr/. See / zie [domain docs](docs/agents/domain.md).
 
 Read the relevant installed SKILL.md before invoking a skill. / Lees de relevante geïnstalleerde SKILL.md vóór gebruik.
+
+## Branch workflow / Branchafspraken
+Always fetch the latest develop and create a fresh feature branch from that commit. Target develop for PRs. Merge only after CI for the current head is green and blocking review findings are resolved.
+
+Haal altijd de actuele develop op en maak daarop een verse featurebranch. Richt PR’s op develop. Merge pas bij groene CI voor de actuele head en opgeloste blokkerende reviewbevindingen.

@@ -1,6 +1,10 @@
 using System.Text.Json.Nodes;
 using Connector.Features.Discovery;
 using Connector.Features.Discovery.GetOperationSchema;
+using Connector.Host;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 
 var v1 = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "v1.openapi.json")))!.AsObject();
 var v2 = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "v2.openapi.json")))!.AsObject();
@@ -25,7 +29,14 @@ ambiguous["paths"]!["/orders/{orderId}"]!["get"]!["responses"]!["201"] = new Jso
     ["content"] = new JsonObject { ["application/json"] = new JsonObject { ["schema"] = new JsonObject { ["type"] = "object", ["properties"] = new JsonObject { ["other"] = new JsonObject { ["type"] = "integer" } } } } }
 };
 Fails("AmbiguousSuccessSchemas", () => OperationSchema.Read(ambiguous, "GET", "/orders/{orderId}"));
-Console.WriteLine("PASS: operation schemas preserve required fields, version shapes, and reject unsafe/ambiguous contracts");
+var provider = new ApimServiceProvider();
+var settings = new JsonSerializerSettings { ContractResolver = new CamelCasePropertyNamesContractResolver() };
+var manifest = JObject.Parse(JsonConvert.SerializeObject(provider.Manifest("invokeApi"), settings));
+Require(manifest["inputs"]?["properties"]?["apiName"]?["x-ms-dynamic-list"]?["dynamicState"]?["operationId"]?.Value<string>() == "listApis", "API dynamic handler missing");
+Require(manifest["inputs"]?["properties"]?["apiVersion"]?["x-ms-dynamic-list"]?["parameters"]?["apiName"]?["parameterReference"]?.Value<string>() == "apiName", "Version dependency missing");
+Require(manifest["outputs"]?["properties"]?["body"]?["x-ms-dynamic-properties"]?["dynamicState"]?["extension"]?["operationId"]?.Value<string>() == "outputSchema", "Dynamic output handler missing");
+Require(provider.GetOperations(true).Count() == 6, "Internal dynamic handlers not registered");
+Console.WriteLine("PASS: schemas and pinned SDK metadata register dependent discovery handlers");
 
 static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
 static void Fails(string expected, Action action)
